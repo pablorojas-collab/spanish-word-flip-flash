@@ -1,61 +1,77 @@
 pipeline {
-    agent {
-        docker {
-            image 'node:22-alpine'
-            args '-u root:root' 
-        }
-    }
-
+    agent any
+    
     options {
         ansiColor('xterm')
     }
 
-    environment {
-        CI = 'true'
-    }
-
     stages {
-
-        stage('Checkout') {
-            steps {
-                checkout scm
+        stage('build') {
+            agent {
+                docker {
+                    image 'node:22-alpine'
+                    reuseNode true
+                }
             }
-        }
-
-        stage('Install dependencies') {
             steps {
                 sh 'npm ci'
-            }
-        }
-
-        stage('Build') {
-            steps {
                 sh 'npm run build'
             }
         }
 
-        stage('Test') {
-            steps {
-                sh 'npx vitest run --reporter=verbose'
+        stage('test') {
+            parallel {
+                stage('unit tests') {
+                    agent {
+                        docker {
+                            image 'node:22-alpine'
+                            reuseNode true
+                        }
+                    }
+                    steps {
+                        // Unit tests with Vitest
+                        sh 'npx vitest run --reporter=verbose'
+                    }
+                }
+                stage('integration tests') {
+                    agent {
+                        docker {
+                            image 'mcr.microsoft.com/playwright:v1.54.2-jammy'
+                            reuseNode true
+                        }
+                    }
+                    steps {
+                        sh 'npx playwright test'
+                    }
+                }
             }
         }
 
-        stage('Deploy') {
+        stage('deploy') {
+            agent {
+                docker {
+                    image 'alpine'
+                }
+            }
             steps {
+                // Mock deployment which does nothing
                 echo 'Mock deployment was successful!'
             }
         }
-    }
 
-    post {
-        always {
-            echo 'Pipeline finished.'
-        }
-        success {
-            echo 'Build SUCCESS ✅'
-        }
-        failure {
-            echo 'Build FAILED ❌'
+        stage('e2e') {
+            agent {
+                docker {
+                    image 'mcr.microsoft.com/playwright:v1.54.2-jammy'
+                    reuseNode true
+                }
+            }
+            environment {
+                E2E_BASE_URL = 'https://spanish-cards.netlify.app/'
+            }
+            steps {
+                sh 'npx playwright test'
+            }
         }
     }
 }
